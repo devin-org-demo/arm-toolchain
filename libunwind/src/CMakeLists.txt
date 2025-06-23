@@ -146,23 +146,35 @@ if (CMAKE_POSITION_INDEPENDENT_CODE OR NOT DEFINED CMAKE_POSITION_INDEPENDENT_CO
   set_target_properties(unwind_shared_objects PROPERTIES POSITION_INDEPENDENT_CODE ON) # must set manually because it's an object library
 endif()
 
-add_library(unwind_shared SHARED)
-target_link_libraries(unwind_shared PUBLIC unwind_shared_objects)
-set_target_properties(unwind_shared
-  PROPERTIES
-    EXCLUDE_FROM_ALL "$<IF:$<BOOL:${LIBUNWIND_ENABLE_SHARED}>,FALSE,TRUE>"
-    LINK_FLAGS "${LIBUNWIND_LINK_FLAGS}"
-    LINKER_LANGUAGE C
-    OUTPUT_NAME "${LIBUNWIND_SHARED_OUTPUT_NAME}"
-    VERSION     "${LIBUNWIND_LIBRARY_VERSION}"
-    SOVERSION   "1"
-)
+function(is_static_only_platform result_var)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Generic" OR 
+     COMPILER_RT_BAREMETAL_BUILD OR 
+     LIBUNWIND_IS_BAREMETAL)
+    set(${result_var} TRUE PARENT_SCOPE)
+  else()
+    set(${result_var} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
 
-if (LIBUNWIND_ENABLE_SHARED)
+is_static_only_platform(IS_STATIC_ONLY)
+if(LIBUNWIND_ENABLE_SHARED AND NOT IS_STATIC_ONLY)
+  add_library(unwind_shared SHARED)
+  target_link_libraries(unwind_shared PUBLIC unwind_shared_objects)
+  set_target_properties(unwind_shared
+    PROPERTIES
+      EXCLUDE_FROM_ALL "$<IF:$<BOOL:${LIBUNWIND_ENABLE_SHARED}>,FALSE,TRUE>"
+      LINK_FLAGS "${LIBUNWIND_LINK_FLAGS}"
+      LINKER_LANGUAGE C
+      OUTPUT_NAME "${LIBUNWIND_SHARED_OUTPUT_NAME}"
+      VERSION     "${LIBUNWIND_LIBRARY_VERSION}"
+      SOVERSION   "1"
+  )
+
   list(APPEND LIBUNWIND_BUILD_TARGETS "unwind_shared")
-endif()
-if (LIBUNWIND_INSTALL_SHARED_LIBRARY)
-  list(APPEND LIBUNWIND_INSTALL_TARGETS "unwind_shared")
+  
+  if (LIBUNWIND_INSTALL_SHARED_LIBRARY)
+    list(APPEND LIBUNWIND_INSTALL_TARGETS "unwind_shared")
+  endif()
 endif()
 
 # Build the static library.

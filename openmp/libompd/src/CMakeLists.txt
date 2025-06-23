@@ -11,10 +11,23 @@
 project (libompd)
 cmake_minimum_required(VERSION 3.20.0)
 
-add_library (ompd SHARED TargetValue.cpp omp-debug.cpp omp-state.cpp omp-icv.cpp)
+function(is_static_only_platform result_var)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Generic" OR 
+     COMPILER_RT_BAREMETAL_BUILD OR 
+     LIBUNWIND_IS_BAREMETAL)
+    set(${result_var} TRUE PARENT_SCOPE)
+  else()
+    set(${result_var} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
 
-# libompd must not link against libomp, there is no code dependency.
-add_dependencies(ompd omp) # ensure generated import library is created first
+is_static_only_platform(IS_STATIC_ONLY)
+if(NOT IS_STATIC_ONLY)
+  add_library (ompd SHARED TargetValue.cpp omp-debug.cpp omp-state.cpp omp-icv.cpp)
+
+  # libompd must not link against libomp, there is no code dependency.
+  add_dependencies(ompd omp) # ensure generated import library is created first
+endif()
 
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
@@ -45,7 +58,9 @@ include_directories (
         ${LIBOMP_SRC_DIR}
 )
 
-INSTALL( TARGETS ompd
-        LIBRARY DESTINATION ${OPENMP_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${OPENMP_INSTALL_LIBDIR}
-        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" )
+if(TARGET ompd)
+  INSTALL( TARGETS ompd
+          LIBRARY DESTINATION ${OPENMP_INSTALL_LIBDIR}
+          ARCHIVE DESTINATION ${OPENMP_INSTALL_LIBDIR}
+          RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" )
+endif()

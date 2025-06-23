@@ -194,35 +194,47 @@ target_compile_options(cxxabi_shared_objects PRIVATE "${LIBCXXABI_ADDITIONAL_COM
 # TODO(LLVM 21): This can be dropped once we only support Clang >= 19.
 target_add_compile_flags_if_supported(cxxabi_shared_objects PRIVATE -fsized-deallocation)
 
-add_library(cxxabi_shared SHARED)
-set_target_properties(cxxabi_shared
-  PROPERTIES
-    EXCLUDE_FROM_ALL "$<IF:$<BOOL:${LIBCXXABI_ENABLE_SHARED}>,FALSE,TRUE>"
-    LINK_FLAGS "${LIBCXXABI_LINK_FLAGS}"
-    OUTPUT_NAME "${LIBCXXABI_SHARED_OUTPUT_NAME}"
-    SOVERSION "1"
-    VERSION "${LIBCXXABI_LIBRARY_VERSION}"
-)
+function(is_static_only_platform result_var)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Generic" OR 
+     COMPILER_RT_BAREMETAL_BUILD OR 
+     LIBUNWIND_IS_BAREMETAL)
+    set(${result_var} TRUE PARENT_SCOPE)
+  else()
+    set(${result_var} FALSE PARENT_SCOPE)
+  endif()
+endfunction()
 
-if (ZOS)
-  add_custom_command(TARGET cxxabi_shared POST_BUILD
-    COMMAND
-      ${LIBCXXABI_LIBCXX_PATH}/utils/zos_rename_dll_side_deck.sh
-      $<TARGET_LINKER_FILE_NAME:cxxabi_shared> $<TARGET_FILE_NAME:cxxabi_shared> "${LIBCXXABI_DLL_NAME}"
-    COMMENT "Rename dll name inside the side deck file"
-    WORKING_DIRECTORY $<TARGET_FILE_DIR:cxxabi_shared>
+is_static_only_platform(IS_STATIC_ONLY)
+if(LIBCXXABI_ENABLE_SHARED AND NOT IS_STATIC_ONLY)
+  add_library(cxxabi_shared SHARED)
+  set_target_properties(cxxabi_shared
+    PROPERTIES
+      EXCLUDE_FROM_ALL "$<IF:$<BOOL:${LIBCXXABI_ENABLE_SHARED}>,FALSE,TRUE>"
+      LINK_FLAGS "${LIBCXXABI_LINK_FLAGS}"
+      OUTPUT_NAME "${LIBCXXABI_SHARED_OUTPUT_NAME}"
+      SOVERSION "1"
+      VERSION "${LIBCXXABI_LIBRARY_VERSION}"
   )
-endif ()
 
-target_link_libraries(cxxabi_shared
-  PUBLIC cxxabi_shared_objects
-  PRIVATE ${LIBCXXABI_LIBRARIES})
+  if (ZOS)
+    add_custom_command(TARGET cxxabi_shared POST_BUILD
+      COMMAND
+        ${LIBCXXABI_LIBCXX_PATH}/utils/zos_rename_dll_side_deck.sh
+        $<TARGET_LINKER_FILE_NAME:cxxabi_shared> $<TARGET_FILE_NAME:cxxabi_shared> "${LIBCXXABI_DLL_NAME}"
+      COMMENT "Rename dll name inside the side deck file"
+      WORKING_DIRECTORY $<TARGET_FILE_DIR:cxxabi_shared>
+    )
+  endif ()
 
-if (LIBCXXABI_ENABLE_SHARED)
-list(APPEND LIBCXXABI_BUILD_TARGETS "cxxabi_shared")
-endif()
-if (LIBCXXABI_INSTALL_SHARED_LIBRARY)
-list(APPEND LIBCXXABI_INSTALL_TARGETS "cxxabi_shared")
+  target_link_libraries(cxxabi_shared
+    PUBLIC cxxabi_shared_objects
+    PRIVATE ${LIBCXXABI_LIBRARIES})
+
+  list(APPEND LIBCXXABI_BUILD_TARGETS "cxxabi_shared")
+  
+  if (LIBCXXABI_INSTALL_SHARED_LIBRARY)
+    list(APPEND LIBCXXABI_INSTALL_TARGETS "cxxabi_shared")
+  endif()
 endif()
 
 # TODO: Move this to libc++'s HandleLibCXXABI.cmake since this is effectively trying to control
@@ -230,7 +242,7 @@ endif()
 add_library(cxxabi-reexports INTERFACE)
 function(export_symbols file)
   # -exported_symbols_list is only available on Apple platforms
-  if (APPLE)
+  if (APPLE AND TARGET cxxabi_shared)
     target_link_libraries(cxxabi_shared PRIVATE "-Wl,-exported_symbols_list,${file}")
   endif()
 endfunction()
